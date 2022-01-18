@@ -207,7 +207,7 @@ function setup() {
 }
 
 function draw() {
-    const graph = new Graph(15);
+    const graph = new Graph(20);
     graph.display(); 
     graph.printGraphTerminal();
     noLoop();

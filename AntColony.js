@@ -88,27 +88,35 @@ class Graph {
         // "i-j" es lo mismo que "j-i"
         const key1 = i + "-" + j;
         const key2 = j + "-" + i;
-        if (key1 in this.pheromones) return this.pheromones[key1];
+        if (key1 in this.pheromones) {
+            return this.pheromones[key1]
+        } else if (key2 in this.pheromones) {
+            return this.pheromones[key2]
+        } 
 
-        return this.pheromones[key2];
+        //NO pheromone
+        const newPheromone = new Pheromone(i, j);
+        newPheromone.addValue(1000);
+        this.pheromones[key1] = newPheromone; 
+
+        return newPheromone;
     }
 
     addPheromoneToEdge(i, j, weight) {
+        console.log('Adding pheromone', i, j)
+        // "i-j" es lo mismo que "j-i"
         const key1 = i + "-" + j;
         const key2 = j + "-" + i;
 
-        if (key1 in this.pheromones) {
-            // Si key1 está key2 también
-            this.pheromones[key1].addValue(weight);
-            this.pheromones[key2].addValue(weight);
+        const pheromone = (key1 in this.pheromones) ? this.pheromones[key1] : this.pheromones[key2];
 
+        if (pheromone !== undefined) {
+            pheromone.addValue(weight)
         } else {
-            // Ninguna está
-            const pheromone = new Pheromone(); 
+            const pheromone = new Pheromone(i, j); 
             pheromone.addValue(weight);
 
             this.pheromones[key1] = pheromone;
-            this.pheromones[key2] = pheromone;
         }
     }
 
@@ -155,10 +163,12 @@ class Graph {
 }
 
 class Pheromone {
-    constructor() {
-        this.decay_factor = 0.5;
-        this.real_value = 0;
-        this.costSum = 0; 
+    constructor(i, j) {
+        this.decarFactor = 0.5;
+        this.realValue = 0;
+        this.costSum = 0;
+        this.i = i; 
+        this.j = j;
     }
 
     addValue(value) {
@@ -167,18 +177,18 @@ class Pheromone {
         this.costSum += cost;
         // console.log("cost", cost)
 
-        const currRealValue =  this.real_value;
-        this.real_value = ((1 - this.decay_factor) * currRealValue) + this.costSum;
+        const currRealValue = this.realValue;
+        this.realValue = ((1 - this.decarFactor) * currRealValue) + this.costSum;
     }
 
     decay() {
         //Decay Pheromone
-        const currRealValue = this.real_value;
-        this.real_value = ((1 - this.decay_factor) * currRealValue) + this.costSum;
+        const currRealValue = this.realValue;
+        this.realValue = ((1 - this.decarFactor) * currRealValue) + this.costSum;
     }
 
     getRealValue() {
-        return this.real_value;
+        return this.realValue;
     }
 }
 
@@ -188,7 +198,7 @@ class Ant {
         this.homeNode = initailNode;
         this.startNode = initailNode;
         this.position = this.startNode.position.copy();
-        this.speed = 8;
+        this.speed = 3;
 
         this.sourceOfFoodNode = sourceOfFoodNode;
         this.arrivedAtSourceOfFood = false;
@@ -196,10 +206,10 @@ class Ant {
         //FOR TEST!
         this.startNode.visited = true;
 
-        this.nodesVisited = {} // nodos que ha visitado
-        this.nodesVisited[this.startNode.id] = true; // Agregamos primero nodo como visitado
-
         this.backTrackPath = [];
+        this.nodesVisited = {};
+        this.nodesVisited[this.homeNode.id] = true;
+
         //Decides a new destination from the start
         const nextNode = this.chooseNextDestinationNode();
         this.setDestinationByNode(nextNode);
@@ -247,32 +257,35 @@ class Ant {
     
 
     getPreviousNodeFromBackTrack() {
-        // Check if next is home and change variable
-
-        /*************
-         * Hacer prueba donde se checa si el proximo es vecino, sino lanzar error. 
-         */
+        // console.log('Backtracking!')
         const nextId = this.backTrackPath.pop();
+
+        // TEST
+        const neighboursIds = Object.keys(this.startNode.neighbours)
+        if (!neighboursIds.includes(nextId)) throw Error("Backtracking to Node thats not a neighbour")
+
         if (nextId !== undefined) {
-            const nextNode = this.graph.getNodeById(nextId);
-            return nextNode;
+            return this.graph.getNodeById(nextId);
+        } else {
+            throw Error("Call to backtrack with no elements")
         }
     }
 
-    getPreviousNodeToHome(neighboursIds) {
+    getPreviousNodeToHome() {
+        console.log('Retuning Home')
+        const neighboursIds = Object.keys(this.startNode.neighbours);
         // Busca su casa
-        let nextNode;
         if (neighboursIds.includes(this.homeNode.id)) {
-            nextNode = this.homeNode;
-        } else {
-            nextNode = this.getPreviousNodeFromBackTrack()
+            // console.log('HOME!')
+            return this.homeNode;
         }
-        
+
+        const nextNode = this.getPreviousNodeFromBackTrack()
         const i = this.startNode.id;
         const j = nextNode.id; 
         const distance = this.startNode.position.dist(nextNode.position);
         this.graph.addPheromoneToEdge(i, j, distance);
-
+        
         return nextNode;
     }
 
@@ -280,34 +293,71 @@ class Ant {
         return neighboursIds.includes(this.sourceOfFoodNode.id)
     }
 
+    /**
+     * Elige por ruleta la feromona más fuerte
+     * @param {array} neighboursPheromones. 
+     */
+    chooseByPheromones(neighboursIds) {
+        const neighboursPheromones = neighboursIds.map(nId => this.graph.getEdgePheromone(this.startNode.id, nId));
+        // console.log('Choose by Pheromones!', neighboursPheromones)
+        let sumOfPheromoneVals = 0;
+        neighboursPheromones.forEach(p => sumOfPheromoneVals += p.realValue);
+        // console.log('sumOfPheromoneVals', sumOfPheromoneVals)
+        // neighboursPheromones.sort((a, b) => a.real_value - b.real_value)
+
+        let choosenPheromone = random(neighboursPheromones);
+
+        //TEST 
+        let res = {};
+        for (let i = 0; i < neighboursPheromones.length; i++) {
+            const currP = neighboursPheromones[i];
+            const realVal = currP.realValue;
+
+            const range = (realVal * 100) / sumOfPheromoneVals;
+
+            res[`Pheromone-${currP.i}-${currP.j}`] = range;
+        }
+
+        console.table(res)
+
+        for (let i = 0; i < neighboursPheromones.length; i++) {
+            const currP = neighboursPheromones[i];
+            const realVal = currP.realValue;
+
+            const range = (realVal * 100) / sumOfPheromoneVals;
+            // console.log('sumOfPheromoneVals', sumOfPheromoneVals);
+            const r = random(100); 
+            if (r <= range) {
+                choosenPheromone = currP;
+                break;
+            }
+        }
+
+        const index = (this.startNode.id === choosenPheromone.i) ? choosenPheromone.j : choosenPheromone.i;
+        const nextNode =  graph.getNodeById(index);
+        this.backTrackPath.push(this.startNode.id);
+        return nextNode;
+    }
+
 
     chooseNextDestinationNode() {
-        const neighboursIds = Object.keys(this.startNode.neighbours);
-
         if (this.arrivedAtSourceOfFood) {
-            return this.getPreviousNodeToHome(neighboursIds);
+            return this.getPreviousNodeToHome();
         }
 
-        //IF Alguno de sus vecinos es comida? 
-            // Vamos a la comiuda
-            // Bandera de comida true
-        
-        //ELSE 
-            //EXPLORAR NORMAL, ver vecinos no visitados sino backtrack
+        const neighboursIds = Object.keys(this.startNode.neighbours).filter(nId => !(nId in this.nodesVisited));
 
         if (this.isSomeNeighbourFood(neighboursIds)) {
+            console.log('FOUNDED FOOD!')
             this.arrivedAtSourceOfFood = true;
+            this.backTrackPath.push(this.startNode.id);
             return this.sourceOfFoodNode;
         }
-        
-        const notVisitedNeighbours = neighboursIds.filter(nId => !(nId in this.nodesVisited));
 
-        if (notVisitedNeighbours.length > 0) {
-            const nextId = random(notVisitedNeighbours);
-            const newDestinationNode = this.graph.getNodeById(nextId);
-            this.backTrackPath.push(newDestinationNode.id);
-            return newDestinationNode;
-        }
+
+        if (neighboursIds.length > 0) {
+            return this.chooseByPheromones(neighboursIds);
+        } 
 
         return this.getPreviousNodeFromBackTrack();
     }
@@ -315,19 +365,16 @@ class Ant {
     resetAnt() {
         this.startNode = this.destinationNode;
         this.arrivedAtSourceOfFood = false;
-        this.nodesVisited = {};
-        this.nodesVisited[this.startNode.id] = true;
         this.backTrackPath = [];
-
+        this.nodesVisited = {};
+        this.nodesVisited[this.homeNode] = true;
         const nextNode = this.chooseNextDestinationNode();
         this.setDestinationByNode(nextNode);
-        this.graph.printPheromones();
     }
 
     printAnt() {
         let res = {}; 
         res["backtrack"] = this.backTrackPath.toString();
-        res["Visited"] = Object.keys(this.nodesVisited).toString();
         res["CurrNode"] = this.startNode.id;
         res["Destination"] = this.destinationNode.id;
         res["FoundedFood?"] = this.arrivedAtSourceOfFood;
@@ -351,9 +398,9 @@ class Ant {
             // LLegó al nodo destino. Debemos elegir un próximo nodo            
             // Su nodo actual es el destino
             this.startNode = this.destinationNode;
-            this.nodesVisited[this.destinationNode.id] = true;
 
             this.startNode.visited = true;
+            this.nodesVisited[this.startNode.id] = true;
             this.position = this.currDestinationVec.copy();
 
 
@@ -365,14 +412,18 @@ class Ant {
 }
 
 class AntColony {
-
+    /**
+     * TODO! Arrreglar bug de backtrack
+     * TODO: Elegir método de elegir entre nodos por pheromonas
+     * 
+     */
     constructor(graph) {
         this.graph = graph;
         this.ants = [];
         // const initialNode = random(graph.nodes)
-        const initialNode = graph.nodes[4];
-        const sourceOfFoodNode = graph.nodes[5]; 
-        const NUMBER_OF_ANTS = 10; 
+        const initialNode = graph.nodes[2];
+        const sourceOfFoodNode = graph.nodes[19]; 
+        const NUMBER_OF_ANTS = 1; 
 
         for (let i = 0; i < NUMBER_OF_ANTS; i++) {
             const ant = new Ant(graph, initialNode, sourceOfFoodNode);
