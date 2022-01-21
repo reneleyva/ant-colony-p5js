@@ -118,7 +118,7 @@ class Graph {
         let connected = 0; 
         let i = 1;
 
-        while (connected < 4 && tries < 2 && i < distances.length) {
+        while (connected < 3 && tries < 2 && i < distances.length) {
             const currDist = distances[i];
             const nodeId = currDist[0];
             const currNode = this.nodes[nodeId];
@@ -207,7 +207,7 @@ function setup() {
 }
 
 function draw() {
-    const graph = new Graph(20);
+    const graph = new Graph(150);
     graph.display(); 
     graph.printGraphTerminal();
     noLoop();

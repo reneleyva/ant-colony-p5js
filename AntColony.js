@@ -24,6 +24,10 @@ class Node {
         }
     }
 
+    getNeighboursList() {
+        return Object.keys(this.neighbours)
+    }
+
     disconnect(node) {
         if (this.isNeigbour(node)) {
             delete this.neighbours[node.id];
@@ -96,46 +100,25 @@ class Graph {
 
         //NO pheromone
         const newPheromone = new Pheromone(i, j);
-        newPheromone.addValue(1000);
         this.pheromones[key1] = newPheromone; 
 
         return newPheromone;
     }
 
     addPheromoneToEdge(i, j, weight) {
-        console.log('Adding pheromone', i, j)
         // "i-j" es lo mismo que "j-i"
         const key1 = i + "-" + j;
         const key2 = j + "-" + i;
 
-        const pheromone = (key1 in this.pheromones) ? this.pheromones[key1] : this.pheromones[key2];
+        let pheromone = (key1 in this.pheromones) ? this.pheromones[key1] : this.pheromones[key2];
 
-        if (pheromone !== undefined) {
-            pheromone.addValue(weight)
-        } else {
-            const pheromone = new Pheromone(i, j); 
-            pheromone.addValue(weight);
-
-            this.pheromones[key1] = pheromone;
+        if (pheromone === undefined) {
+            pheromone = new Pheromone(i, j);
         }
-    }
 
-    //TESTING!
-    printPheromones() {
-        let res = {}
-        Object.keys(this.pheromones).forEach(key => {
-            const pher = this.pheromones[key];
-            res[key] = pher.getRealValue();
-        })
-
-        console.table(res);
-    } 
-
-    update() {
-        //Update Pheromones 
-        Object.keys(this.pheromones).forEach(key => {
-            this.pheromones[key].decay();
-        })
+        pheromone.updatePheromone(weight);
+        // pheromone.decay();
+        this.pheromones[key1] = pheromone;
     }
 
     display() {
@@ -149,7 +132,7 @@ class Graph {
             }
             text(node.id, node.position.x, node.position.y)
 
-            Object.keys(node.neighbours).forEach(neiId => {
+            node.getNeighboursList().forEach(neiId => {
                 if (!(`${neiId}-${node.id}` in pairsAlreadyDraw)) {
                     const neiObj = this.nodes[neiId];
                     stroke(117, 117, 117);
@@ -165,26 +148,20 @@ class Graph {
 class Pheromone {
     constructor(i, j) {
         this.decarFactor = 0.5;
-        this.realValue = 0;
-        this.costSum = 0;
-        this.i = i; 
+        this.realValue = 0.1;
+        this.i = i;
         this.j = j;
     }
 
-    addValue(value) {
-        // Update value
-        const cost = 1/(value);
-        this.costSum += cost;
-        // console.log("cost", cost)
-
-        const currRealValue = this.realValue;
-        this.realValue = ((1 - this.decarFactor) * currRealValue) + this.costSum;
+    updatePheromone(value) {
+        const cost = 100/value;
+        this.realValue += cost;
     }
 
     decay() {
-        //Decay Pheromone
+        // TODO: Decay only when contructing solution
         const currRealValue = this.realValue;
-        this.realValue = ((1 - this.decarFactor) * currRealValue) + this.costSum;
+        this.realValue = (1 - this.decarFactor) * currRealValue;
     }
 
     getRealValue() {
@@ -193,12 +170,12 @@ class Pheromone {
 }
 
 class Ant {
-    constructor(graph, initailNode, sourceOfFoodNode) {
+    constructor(antId, graph, initailNode, sourceOfFoodNode) {
+        this.antId = antId;
         this.graph = graph;
         this.homeNode = initailNode;
         this.startNode = initailNode;
         this.position = this.startNode.position.copy();
-        this.speed = 3;
 
         this.sourceOfFoodNode = sourceOfFoodNode;
         this.arrivedAtSourceOfFood = false;
@@ -210,6 +187,7 @@ class Ant {
         this.nodesVisited = {};
         this.nodesVisited[this.homeNode.id] = true;
 
+        this.currDistanceWalked = 0;
         //Decides a new destination from the start
         const nextNode = this.chooseNextDestinationNode();
         this.setDestinationByNode(nextNode);
@@ -223,13 +201,13 @@ class Ant {
     /**
      * For testing
      */
-    setRandomNodeDestination() {
-        const randomNeightId = random(Object.keys(this.startNode.neighbours)); 
-        const randomNeigh = graph.getNodeById(randomNeightId);
+    // setRandomNodeDestination() {
+    //     const randomNeightId = random(Object.keys(this.startNode.neighbours)); 
+    //     const randomNeigh = graph.getNodeById(randomNeightId);
 
-        this.destinationNode = randomNeigh;
-        this.currDestinationVec = randomNeigh.position.copy();
-    }
+    //     this.destinationNode = randomNeigh;
+    //     this.currDestinationVec = randomNeigh.position.copy();
+    // }
 
     display() {
         fill(255, 0, 0);
@@ -254,14 +232,12 @@ class Ant {
         return m
     }
 
-    
-
     getPreviousNodeFromBackTrack() {
         // console.log('Backtracking!')
         const nextId = this.backTrackPath.pop();
 
         // TEST
-        const neighboursIds = Object.keys(this.startNode.neighbours)
+        const neighboursIds = this.startNode.getNeighboursList();
         if (!neighboursIds.includes(nextId)) throw Error("Backtracking to Node thats not a neighbour")
 
         if (nextId !== undefined) {
@@ -272,20 +248,21 @@ class Ant {
     }
 
     getPreviousNodeToHome() {
-        console.log('Retuning Home')
-        const neighboursIds = Object.keys(this.startNode.neighbours);
+        // console.log('Retuning Home')
+        const neighboursIds = this.startNode.getNeighboursList();
         // Busca su casa
+        let nextNode;
         if (neighboursIds.includes(this.homeNode.id)) {
             // console.log('HOME!')
-            return this.homeNode;
+            nextNode = this.homeNode;
+        } else{
+            nextNode = this.getPreviousNodeFromBackTrack();
         }
 
-        const nextNode = this.getPreviousNodeFromBackTrack()
         const i = this.startNode.id;
         const j = nextNode.id; 
-        const distance = this.startNode.position.dist(nextNode.position);
-        this.graph.addPheromoneToEdge(i, j, distance);
-        
+        this.graph.addPheromoneToEdge(i, j, this.currDistanceWalked); 
+        // this.backTrackPath.push(nextNode.id);
         return nextNode;
     }
 
@@ -299,26 +276,32 @@ class Ant {
      */
     chooseByPheromones(neighboursIds) {
         const neighboursPheromones = neighboursIds.map(nId => this.graph.getEdgePheromone(this.startNode.id, nId));
+
+        // console.log(neighboursPheromones)
         // console.log('Choose by Pheromones!', neighboursPheromones)
         let sumOfPheromoneVals = 0;
         neighboursPheromones.forEach(p => sumOfPheromoneVals += p.realValue);
         // console.log('sumOfPheromoneVals', sumOfPheromoneVals)
-        // neighboursPheromones.sort((a, b) => a.real_value - b.real_value)
+        neighboursPheromones.sort((a, b) => (a.realValue > b.realValue) ? - 1 : ((b.realValue > a.realValue) ? 1 : 0))
 
-        let choosenPheromone = random(neighboursPheromones);
-
-        //TEST 
-        let res = {};
-        for (let i = 0; i < neighboursPheromones.length; i++) {
-            const currP = neighboursPheromones[i];
-            const realVal = currP.realValue;
-
-            const range = (realVal * 100) / sumOfPheromoneVals;
-
-            res[`Pheromone-${currP.i}-${currP.j}`] = range;
+        let choosenPheromone = neighboursPheromones[0];
+        
+        if (this.antId === 5 && DEBUG) {
+            // console.log('All pheromones', neighboursPheromones)
+            // console.log('Chosen fisrt', choosenPheromone)
+            //TEST 
+            let res = {};
+            for (let i = 0; i < neighboursPheromones.length; i++) {
+                const currP = neighboursPheromones[i];
+                const realVal = currP.realValue;
+    
+                const range = (realVal * 100) / sumOfPheromoneVals;
+    
+                res[`Pheromone-${currP.i}-${currP.j}`] = range;
+            }
+    
+            console.table(res)
         }
-
-        console.table(res)
 
         for (let i = 0; i < neighboursPheromones.length; i++) {
             const currP = neighboursPheromones[i];
@@ -326,7 +309,12 @@ class Ant {
 
             const range = (realVal * 100) / sumOfPheromoneVals;
             // console.log('sumOfPheromoneVals', sumOfPheromoneVals);
-            const r = random(100); 
+            const r = random(100);
+            // if (this.antId === 5) {
+            //     console.log("toss", r)
+            //     console.log("range", range)
+            //     console.log('All Pheromones', neighboursPheromones)
+            // }
             if (r <= range) {
                 choosenPheromone = currP;
                 break;
@@ -345,21 +333,22 @@ class Ant {
             return this.getPreviousNodeToHome();
         }
 
-        const neighboursIds = Object.keys(this.startNode.neighbours).filter(nId => !(nId in this.nodesVisited));
+        const neighboursIds = this.startNode.getNeighboursList().filter(nId => !(nId in this.nodesVisited));
 
         if (this.isSomeNeighbourFood(neighboursIds)) {
-            console.log('FOUNDED FOOD!')
+            // console.log('FOUNDED FOOD!')
             this.arrivedAtSourceOfFood = true;
             this.backTrackPath.push(this.startNode.id);
             return this.sourceOfFoodNode;
         }
 
-
         if (neighboursIds.length > 0) {
             return this.chooseByPheromones(neighboursIds);
         } 
 
-        return this.getPreviousNodeFromBackTrack();
+        const backNode = this.getPreviousNodeFromBackTrack();
+        this.currDistanceWalked -= this.startNode.position.dist(backNode.position);
+        return backNode;
     }
 
     resetAnt() {
@@ -367,7 +356,8 @@ class Ant {
         this.arrivedAtSourceOfFood = false;
         this.backTrackPath = [];
         this.nodesVisited = {};
-        this.nodesVisited[this.homeNode] = true;
+        this.nodesVisited[this.homeNode.id] = true;
+        this.currDistanceWalked = 0;
         const nextNode = this.chooseNextDestinationNode();
         this.setDestinationByNode(nextNode);
     }
@@ -383,9 +373,9 @@ class Ant {
     
     update() {
         const distToDest = this.position.dist(this.currDestinationVec)
-        if(int(distToDest) >= this.speed) {
+        if(int(distToDest) >= speed_slider.value()) {
             const m = this.getDirectionVectorByDestination();
-            this.position.add(m.mult(this.speed));
+            this.position.add(m.mult(speed_slider.value()));
         } else {
             // this.printAnt();
             if (this.destinationNode.id == this.homeNode.id) {
@@ -394,9 +384,12 @@ class Ant {
                 return;
             };
             
-            // this.graph.printPheromones(); // TO TEST! 
+            // console.log("DISTANCE!", this.currDistanceWalked)
+
             // LLegó al nodo destino. Debemos elegir un próximo nodo            
             // Su nodo actual es el destino
+            this.currDistanceWalked += this.startNode.position.dist(this.destinationNode.position);
+
             this.startNode = this.destinationNode;
 
             this.startNode.visited = true;
@@ -421,19 +414,19 @@ class AntColony {
         this.graph = graph;
         this.ants = [];
         // const initialNode = random(graph.nodes)
-        const initialNode = graph.nodes[2];
-        const sourceOfFoodNode = graph.nodes[19]; 
-        const NUMBER_OF_ANTS = 1; 
+        const initialNode = graph.nodes[117];
+        const sourceOfFoodNode = graph.nodes[66]; 
+        const NUMBER_OF_ANTS = 100; 
 
         for (let i = 0; i < NUMBER_OF_ANTS; i++) {
-            const ant = new Ant(graph, initialNode, sourceOfFoodNode);
+            const ant = new Ant(i, graph, initialNode, sourceOfFoodNode);
             this.ants.push(ant);
         }
     }
 
     display() {
         this.graph.display();
-        this.graph.update();
+        // this.graph.update();
         this.ants.map(ant => ant.display());
     }
 
@@ -445,6 +438,7 @@ class AntColony {
 let graph;
 let colony;
 
+let speed_slider;
 function setup() {
     createCanvas(windowWidth, windowHeight);
     graph = new Graph(graphJson.nodes.length);
@@ -452,6 +446,13 @@ function setup() {
     colony = new AntColony(graph);
     button = createButton("play");
     button.mousePressed(togglePlaying);
+    button2 = createButton("DEBUG");
+    button2.mousePressed(toggleDebug);
+    speed_slider = createSlider(0, 80, 3, 1); 
+}
+
+function toggleDebug() {
+    DEBUG = !DEBUG; 
 }
 
 function togglePlaying() {
@@ -459,12 +460,16 @@ function togglePlaying() {
 }
 
 let PLAY = true;
-
+let DEBUG = false;
 function draw() {
     if (PLAY) {
         background("lightgrey");
         colony.display();
         colony.update();
-    }
+    } 
+    
+    // else {
+    //     debugger
+    // }
     // noLoop();
 }
